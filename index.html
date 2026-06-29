@@ -198,8 +198,10 @@
   .sheet-actions .primary:hover{background:#27272A}
   .sheet-actions button:active{transform:scale(.98)}
 
-  .toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(12px);background:var(--ink);color:var(--surface);font-size:13.5px;font-weight:450;padding:11px 18px;border-radius:var(--r-pill);opacity:0;pointer-events:none;transition:var(--t-med);z-index:60;box-shadow:var(--sh-lg)}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(12px);background:var(--ink);color:var(--surface);font-size:13.5px;font-weight:450;padding:11px 18px;border-radius:var(--r-pill);opacity:0;pointer-events:none;transition:var(--t-med);z-index:60;box-shadow:var(--sh-lg);display:flex;align-items:center;gap:14px;white-space:nowrap}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+  .toast-undo{background:none;border:none;color:rgba(255,255,255,.75);font-size:13.5px;font-weight:650;cursor:pointer;padding:0;font-family:inherit;letter-spacing:.01em;text-decoration:underline;text-underline-offset:2px}
+  .toast-undo:hover{color:#fff}
 </style>
 </head>
 <body>
@@ -488,8 +490,13 @@ function taskEl(t,pendList){
   li.querySelector('.t-body').onclick=()=>openTaskSheet(t);
   li.querySelector('.del').onclick=e=>{
     e.stopPropagation();
+    const idx=board().tasks.indexOf(t);
     board().tasks=board().tasks.filter(x=>x.id!==t.id);
-    persist();scheduleAll();render();toast('Tarea eliminada');
+    persist();scheduleAll();render();
+    toastUndo('Tarea eliminada', ()=>{
+      board().tasks.splice(idx,0,t);
+      persist();scheduleAll();render();
+    });
   };
 
   attachSwipe(li,t);
@@ -897,7 +904,25 @@ $('#deleteBoardBtn').onclick=()=>{
 
 /* ---- toast ---- */
 let toastT;
-function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2300)}
+function toast(msg){
+  const el=$('#toast');
+  el.innerHTML=`<span>${esc(msg)}</span>`;
+  el.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>el.classList.remove('show'),2300);
+}
+function toastUndo(msg,onUndo){
+  const el=$('#toast');
+  el.innerHTML=`<span>${esc(msg)}</span><button class="toast-undo">Deshacer</button>`;
+  el.classList.add('show');
+  clearTimeout(toastT);
+  el.querySelector('.toast-undo').onclick=()=>{
+    clearTimeout(toastT);
+    el.classList.remove('show');
+    onUndo();
+  };
+  toastT=setTimeout(()=>el.classList.remove('show'),4000);
+}
 
 /* ---- init ---- */
 if('serviceWorker'in navigator){
