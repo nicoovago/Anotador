@@ -109,17 +109,7 @@
   @keyframes taskIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
   .task:hover{border-color:var(--line-2);box-shadow:var(--sh-md)}
   .task[data-level="1"]{margin-left:var(--indent)}
-  .task[data-level="2"]{margin-left:calc(var(--indent)*2)}
 
-  /* indent connector line */
-  .task[data-level="1"]::before,.task[data-level="2"]::before{
-    content:'';position:absolute;left:calc(-1 * var(--indent) + 9px);top:0;bottom:50%;
-    width:1px;background:var(--line-2);
-  }
-  .task[data-level="1"]::after,.task[data-level="2"]::after{
-    content:'';position:absolute;left:calc(-1 * var(--indent) + 9px);top:50%;
-    width:10px;height:1px;background:var(--line-2);
-  }
 
   /* swipe hint overlay */
   .task .swipe-hint{
@@ -516,7 +506,7 @@ function canIndent(t){
   let prev=null;
   for(let i=idx-1;i>=0;i--){if(!tasks[i].done){prev=tasks[i];break}}
   if(!prev)return false;
-  const maxAllowed=Math.min((prev.level||0)+1,2);
+  const maxAllowed=Math.min((prev.level||0)+1,1);
   return cur<maxAllowed;
 }
 function canOutdent(t){return (t.level||0)>0}
@@ -528,7 +518,7 @@ function indentTask(t){
   if(idx<=0)return false; // no task above at all
 
   const cur=t.level||0;
-  if(cur>=2){toast('Nivel máximo (2)');return false}
+  if(cur>=1){toast('Nivel máximo');return false}
 
   // Find the closest preceding non-done task
   let prev=null;
@@ -537,8 +527,8 @@ function indentTask(t){
 
   const prevLvl=prev.level||0;
   // Can only indent to at most prevLvl+1
-  const maxAllowed=Math.min(prevLvl+1,2);
-  if(cur>=maxAllowed){toast('Nivel máximo posible aquí');return false}
+  const maxAllowed=Math.min(prevLvl+1,1);
+  if(cur>=maxAllowed){toast('Nivel máximo');return false}
 
   const delta=1; // always indent by 1
   t.level=cur+delta;
@@ -548,7 +538,7 @@ function indentTask(t){
     if(tasks[i].done)continue;
     const cl=tasks[i].level||0;
     if(cl<=cur)break; // no longer a child
-    tasks[i].level=Math.min(cl+delta,2);
+    tasks[i].level=Math.min(cl+delta,1);
   }
   return true;
 }
