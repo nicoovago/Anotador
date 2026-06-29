@@ -152,12 +152,14 @@
   .t-mini:hover{background:var(--surface-2);color:var(--ink)}
   .t-mini.del:hover{background:var(--danger-bg);color:var(--danger)}
   .t-mini:active{transform:scale(.9)}
-  .t-mini.off{opacity:.25;pointer-events:none}
-  .t-mini.indent svg,.t-mini.outdent svg{stroke-width:2}
-  /* drag handle */
-  .drag-handle{width:28px;height:28px;border:none;background:none;color:var(--ink-3);cursor:grab;display:flex;align-items:center;justify-content:center;touch-action:none;flex:0 0 auto;margin-top:0;border-radius:var(--r-sm)}
-  .drag-handle:active{cursor:grabbing}
-  .drag-handle svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  /* drag handle → swipe zone */
+  .swipe-zone{
+    width:28px;flex:0 0 28px;display:flex;align-items:center;justify-content:center;
+    cursor:grab;color:var(--ink-3);align-self:stretch;border-radius:var(--r-sm) 0 0 var(--r-sm);
+    touch-action:none; /* crítico: deja que JS maneje todos los touch */
+    user-select:none;-webkit-user-select:none;
+  }
+  .swipe-zone:active{cursor:grabbing;background:var(--surface-2)}
 
   .empty{text-align:center;color:var(--ink-3);padding:64px 20px}
   .empty .ico{width:44px;height:44px;margin:0 auto 16px;border:1.75px dashed var(--line-2);border-radius:12px;display:flex;align-items:center;justify-content:center}
@@ -476,15 +478,15 @@ function taskEl(t,pendList){
   });
 
   li.innerHTML=`
-    <button class="drag-handle" aria-label="Arrastrar">${ICON.handle}</button>
+    <div class="swipe-zone" aria-label="Deslizá para anidar">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </div>
     <button class="check" aria-label="Completar"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></button>
     <div class="t-body">
       <div class="t-title">${esc(t.text)}</div>
       ${tags?`<div class="t-tags">${tags}</div>`:''}
     </div>
     <div class="t-actions">
-      <button class="t-mini outdent" aria-label="Quitar sangría" title="Quitar sangría">${ICON.outdent}</button>
-      <button class="t-mini indent" aria-label="Anidar" title="Anidar">${ICON.indent}</button>
       <button class="t-mini edit" aria-label="Editar">${ICON.edit}</button>
       <button class="t-mini del" aria-label="Eliminar">${ICON.trash}</button>
     </div>
@@ -492,20 +494,8 @@ function taskEl(t,pendList){
     <div class="swipe-hint left">${ICON.outdent}</div>`;
 
   li.querySelector('.check').onclick=()=>{t.done=!t.done;persist();scheduleAll();render()};
-  const btnIndent=li.querySelector('.indent'),btnOutdent=li.querySelector('.outdent');
-  if(t.done){btnIndent.classList.add('off');btnOutdent.classList.add('off')}
-  else{
-    if(!canIndent(t))btnIndent.classList.add('off');
-    if(!canOutdent(t))btnOutdent.classList.add('off');
-  }
-  btnIndent.onclick=e=>{e.stopPropagation();if(indentTask(t)){persist();render()}};
-  btnOutdent.onclick=e=>{e.stopPropagation();if(outdentTask(t)){persist();render()}};
   li.querySelector('.edit').onclick=e=>{e.stopPropagation();openTaskSheet(t)};
-  li.querySelector('.t-body').addEventListener('click',e=>{
-    // si el pointer se movió más de 8px horizontalmente, fue swipe — no abrir sheet
-    if(li._swipedH)return;
-    openTaskSheet(t);
-  });
+  li.querySelector('.t-body').onclick=()=>openTaskSheet(t);
   li.querySelector('.del').onclick=e=>{
     e.stopPropagation();
     board().tasks=board().tasks.filter(x=>x.id!==t.id);
@@ -583,20 +573,18 @@ function outdentTask(t){
 
 /* ---- swipe to indent/outdent ---- */
 function attachSwipe(li,t){
+  const zone=li.querySelector('.swipe-zone');
   const hintR=li.querySelector('.swipe-hint.right');
   const hintL=li.querySelector('.swipe-hint.left');
-  const THRESH=60;
+  const THRESH=50;
   let sx=0,sy=0,active=false,axisLocked=null;
 
-  function onStart(x,y){
-    if(active)return;
-    sx=x;sy=y;active=true;axisLocked=null;li._swipedH=false;
-  }
+  function onStart(x,y){sx=x;sy=y;active=true;axisLocked=null}
   function onMove(x,y){
     if(!active)return;
     const dx=x-sx,dy=y-sy;
     if(!axisLocked){
-      if(Math.abs(dx)<5&&Math.abs(dy)<5)return;
+      if(Math.abs(dx)<4&&Math.abs(dy)<4)return;
       axisLocked=Math.abs(dx)>=Math.abs(dy)?'h':'v';
     }
     if(axisLocked==='v'){hintR.style.opacity=0;hintL.style.opacity=0;return}
@@ -611,45 +599,35 @@ function attachSwipe(li,t){
     if(axisLocked!=='h')return;
     const dx=x-sx;
     if(Math.abs(dx)<THRESH)return;
-    li._swipedH=true;
     if(dx>0){if(indentTask(t)){persist();render()}}
     else{if(outdentTask(t)){persist();render()}}
   }
-  function onCancel(){
-    active=false;
-    hintR.style.opacity=0;hintL.style.opacity=0;
-  }
 
-  // ── TOUCH (mobile) ──────────────────────────────────
-  li.addEventListener('touchstart',e=>{
-    if(e.target.closest('button'))return;
+  // touch — en la zona dedicada, sin conflicto con scroll ni otros elementos
+  zone.addEventListener('touchstart',e=>{
+    e.preventDefault(); // zona dedicada: prevenimos todo desde el inicio
     onStart(e.touches[0].clientX,e.touches[0].clientY);
-  },{passive:true});
-
-  li.addEventListener('touchmove',e=>{
-    if(!active)return;
-    // si ya sabemos que es horizontal, prevenimos el scroll
-    const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
-    if(axisLocked==='h'||(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>10)){
-      e.preventDefault();
-    }
+  },{passive:false});
+  zone.addEventListener('touchmove',e=>{
+    e.preventDefault();
     onMove(e.touches[0].clientX,e.touches[0].clientY);
   },{passive:false});
-
-  li.addEventListener('touchend',e=>{
+  zone.addEventListener('touchend',e=>{
+    e.preventDefault();
     onEnd(e.changedTouches[0].clientX);
+  },{passive:false});
+  zone.addEventListener('touchcancel',()=>{
+    active=false;hintR.style.opacity=0;hintL.style.opacity=0;
   },{passive:true});
 
-  li.addEventListener('touchcancel',onCancel,{passive:true});
-
-  // ── MOUSE (desktop) ──────────────────────────────────
-  li.addEventListener('mousedown',e=>{
-    if(e.target.closest('button'))return;
+  // mouse
+  zone.addEventListener('mousedown',e=>{
+    e.preventDefault();
     onStart(e.clientX,e.clientY);
-    function onMM(e){onMove(e.clientX,e.clientY)}
-    function onMU(e){onEnd(e.clientX);window.removeEventListener('mousemove',onMM);window.removeEventListener('mouseup',onMU)}
-    window.addEventListener('mousemove',onMM);
-    window.addEventListener('mouseup',onMU);
+    const mm=e=>onMove(e.clientX,e.clientY);
+    const mu=e=>{onEnd(e.clientX);window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu)};
+    window.addEventListener('mousemove',mm);
+    window.addEventListener('mouseup',mu);
   });
 }
 
@@ -700,7 +678,7 @@ function attachDrag(ul,pendList){
     dragEl=null;placeholder=null;
   }
 
-  ul.querySelectorAll('.drag-handle').forEach(handle=>{
+  ul.querySelectorAll('.swipe-zone').forEach(handle=>{
     const li=handle.closest('li');
 
     // touch drag
